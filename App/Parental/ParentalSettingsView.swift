@@ -21,6 +21,9 @@ struct ParentalSettingsView: View {
                 Stepper(value: $draft.dailyLimitSeconds, in: 60...7200, step: 60) {
                     Text("\(draft.dailyLimitSeconds / 60) Minuten")
                 }
+                Text("Heute verbleibend: \(viewModel.remainingDailySeconds / 60) Min")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Modi") {
@@ -48,6 +51,9 @@ struct ParentalSettingsView: View {
                             Text(entry.transcript.isEmpty ? "Ohne Transkript" : entry.transcript)
                             Text("\(entry.mode.rawValue) • \(entry.safetyState)")
                                 .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("Dauer (geschätzt): \(entry.estimatedDurationSeconds)s")
+                                .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
                     }

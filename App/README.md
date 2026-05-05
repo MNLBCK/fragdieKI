@@ -13,6 +13,8 @@ Diese Struktur bildet eine einfache Push-to-Talk-App in SwiftUI für iOS 15 ab.
 - **Lokale Settings-Persistenz** via `UserDefaults`.
 - **Persistente Device-ID** via `UserDefaults`.
 - **Verlauf** (letzte Turns) im Elternmodus inkl. Löschfunktion.
+- **Tageslimit-Prüfung** beim Start der Aufnahme (basierend auf lokalem Verlauf und geschätzter Turn-Dauer).
+- **Modus-Prüfung**: deaktivierte Modi werden vor Aufnahme blockiert.
 
 ## App-Zustände
 
@@ -20,6 +22,6 @@ Diese Struktur bildet eine einfache Push-to-Talk-App in SwiftUI für iOS 15 ab.
 
 ## Offene Punkte (für produktiven Betrieb)
 
-- Tageslimit aktuell nur konfigurierbar, noch nicht hart erzwungen.
 - Offline-Fallback-Audiodatei ist noch nicht eingebunden.
+- Die Dauer pro Turn wird aktuell als Schätzwert gespeichert (bis zu 20s), nicht als exakte Messung.
 - Kein fertiges Xcode-Projekt (`.xcodeproj`) enthalten; der Code ist als modulare Basisstruktur angelegt.

@@ -34,6 +34,14 @@ final class AppStateViewModel: ObservableObject {
             }
             return
         }
+        guard settings.enabledModes.contains(currentMode) else {
+            state = .error("Modus deaktiviert")
+            return
+        }
+        guard remainingDailySeconds > 0 else {
+            state = .error("Tageslimit erreicht")
+            return
+        }
 
         do {
             try recorder.startRecording()
@@ -84,6 +92,10 @@ final class AppStateViewModel: ObservableObject {
         HistoryStore.clear()
     }
 
+    var remainingDailySeconds: Int {
+        max(0, settings.dailyLimitSeconds - usedTodaySeconds)
+    }
+
     private func validatedServerURL() throws -> URL {
         guard let url = URL(string: settings.serverBaseURL) else {
             throw URLError(.badURL)
@@ -92,14 +104,24 @@ final class AppStateViewModel: ObservableObject {
     }
 
     private func appendHistory(_ response: TurnResponse) {
+        let estimatedDurationSeconds = min(20, remainingDailySeconds == 0 ? 20 : remainingDailySeconds)
         let entry = TurnHistoryEntry(
             id: UUID(),
             createdAt: Date(),
             mode: currentMode,
             transcript: response.transcript,
-            safetyState: response.safetyState
+            safetyState: response.safetyState,
+            estimatedDurationSeconds: estimatedDurationSeconds
         )
         history.insert(entry, at: 0)
         HistoryStore.save(history)
+    }
+
+    private var usedTodaySeconds: Int {
+        let calendar = Calendar.current
+        return history
+            .filter { calendar.isDateInToday($0.createdAt) }
+            .map(\.estimatedDurationSeconds)
+            .reduce(0, +)
     }
 }
