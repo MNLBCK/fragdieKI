@@ -33,11 +33,15 @@ struct MainView: View {
                 .font(.title3)
 
             Image(systemName: "gear")
+                .accessibilityLabel("Elternmodus")
+                .accessibilityHint("Gedrückt halten für Elternmodus")
+                .accessibilityAddTraits(.isButton)
                 .onLongPressGesture(minimumDuration: 1.5) {
                     showParentalGate = true
                 }
         }
         .padding()
+        .onAppear { viewModel.configure() }
         .sheet(isPresented: $showParentalGate) {
             ParentalGateView(viewModel: viewModel)
         }

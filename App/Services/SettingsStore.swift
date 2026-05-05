@@ -3,20 +3,28 @@ import Foundation
 enum SettingsStore {
     private static let key = "fragdieki.parental.settings"
     private static let deviceKey = "fragdieki.device.id"
+    private static let pinKeychainAccount = "parental-pin"
 
     static func load() -> ParentalSettings {
-        guard
-            let data = UserDefaults.standard.data(forKey: key),
-            let decoded = try? JSONDecoder().decode(ParentalSettings.self, from: data)
-        else {
-            return .default
+        var settings: ParentalSettings
+        if let data = UserDefaults.standard.data(forKey: key),
+           let decoded = try? JSONDecoder().decode(ParentalSettings.self, from: data) {
+            settings = decoded
+        } else {
+            settings = .default
         }
-        return decoded
+        // Load PIN from Keychain (falls back to default "1234" on first run).
+        settings.pinCode = KeychainHelper.load(account: pinKeychainAccount) ?? "1234"
+        return settings
     }
 
     static func save(_ settings: ParentalSettings) {
-        guard let data = try? JSONEncoder().encode(settings) else { return }
-        UserDefaults.standard.set(data, forKey: key)
+        // Persist all fields except pinCode to UserDefaults.
+        if let data = try? JSONEncoder().encode(settings) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+        // Persist PIN separately in Keychain.
+        KeychainHelper.save(settings.pinCode, account: pinKeychainAccount)
     }
 
     static func loadOrCreateDeviceID() -> UUID {
@@ -28,3 +36,4 @@ enum SettingsStore {
         return id
     }
 }
+

@@ -27,6 +27,16 @@ final class AppStateViewModel: ObservableObject {
         }
     }
 
+    // Wire up after init so `self` is available.
+    func configure() {
+        recorder.onRecordingFinishedBySystem = { [weak self] audioURL in
+            Task { @MainActor [weak self] in
+                guard let self, case .recording = self.state else { return }
+                self.handleAudioReady(audioURL)
+            }
+        }
+    }
+
     func pressAndHoldStart() {
         guard case .idle = state else {
             if case .speaking = state {
@@ -43,38 +53,30 @@ final class AppStateViewModel: ObservableObject {
             return
         }
 
-        do {
-            try recorder.startRecording()
-            state = .recording
-        } catch {
-            state = .error("Aufnahme nicht möglich")
+        Task {
+            do {
+                try await recorder.startRecording()
+                state = .recording
+            } catch RecorderError.permissionDenied {
+                state = .error("Mikrofon-Zugriff verweigert")
+            } catch {
+                state = .error(settings.debugEnabled ? error.localizedDescription : "Aufnahme nicht möglich")
+            }
         }
     }
 
     func releaseAndSend() {
         guard case .recording = state else { return }
 
-        Task {
-            do {
-                state = .uploading
-                let audioURL = try recorder.stopRecording()
-                state = .thinking
-                let baseURL = try validatedServerURL()
-                let response = try await backend.sendTurn(
-                    audioURL: audioURL,
-                    sessionId: sessionId,
-                    deviceId: deviceId,
-                    mode: currentMode,
-                    serverBaseURL: baseURL
-                )
-                let ttsURL = try await backend.downloadAudio(audioPath: response.audioURL, serverBaseURL: baseURL)
-                appendHistory(response)
-                state = .speaking
-                try playback.play(url: ttsURL)
-            } catch {
-                state = .error("Keine Verbindung")
-            }
+        let audioURL: URL
+        do {
+            audioURL = try recorder.stopRecording()
+        } catch {
+            state = .error(settings.debugEnabled ? error.localizedDescription : "Aufnahme fehlerhaft")
+            return
         }
+
+        handleAudioReady(audioURL)
     }
 
     func stopPlayback() {
@@ -96,11 +98,52 @@ final class AppStateViewModel: ObservableObject {
         max(0, settings.dailyLimitSeconds - usedTodaySeconds)
     }
 
-    private func validatedServerURL() throws -> URL {
-        guard let url = URL(string: settings.serverBaseURL) else {
-            throw URLError(.badURL)
+    // MARK: - Private
+
+    /// Shared upload + playback flow triggered either by an explicit button release or
+    /// by the recorder reaching its maximum duration.
+    private func handleAudioReady(_ audioURL: URL) {
+        guard let baseURL = URL(string: settings.serverBaseURL) else {
+            state = .error("Server-URL ungültig")
+            return
         }
-        return url
+
+        state = .uploading
+
+        // Capture value-typed state needed off the MainActor.
+        let sessionId = self.sessionId
+        let deviceId = self.deviceId
+        let mode = self.currentMode
+        let debugEnabled = self.settings.debugEnabled
+        let backend = self.backend
+        let playback = self.playback
+
+        Task.detached { [weak self] in
+            do {
+                let response = try await backend.sendTurn(
+                    audioURL: audioURL,
+                    sessionId: sessionId,
+                    deviceId: deviceId,
+                    mode: mode,
+                    serverBaseURL: baseURL
+                )
+                await MainActor.run { self?.state = .thinking }
+                let ttsURL = try await backend.downloadAudio(audioPath: response.audioURL, serverBaseURL: baseURL)
+                await MainActor.run {
+                    self?.appendHistory(response)
+                    self?.state = .speaking
+                    try? playback.play(url: ttsURL)
+                }
+            } catch let urlError as URLError {
+                await MainActor.run {
+                    self?.state = .error(debugEnabled ? urlError.localizedDescription : "Keine Verbindung")
+                }
+            } catch {
+                await MainActor.run {
+                    self?.state = .error(debugEnabled ? error.localizedDescription : "Fehler aufgetreten")
+                }
+            }
+        }
     }
 
     private func appendHistory(_ response: TurnResponse) {
@@ -125,3 +168,4 @@ final class AppStateViewModel: ObservableObject {
             .reduce(0, +)
     }
 }
+

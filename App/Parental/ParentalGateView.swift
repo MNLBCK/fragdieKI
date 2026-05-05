@@ -7,7 +7,7 @@ struct ParentalGateView: View {
     @State private var unlocked = false
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             Group {
                 if unlocked {
                     ParentalSettingsView(viewModel: viewModel)
@@ -24,7 +24,7 @@ struct ParentalGateView: View {
                 }
             }
             .navigationTitle("Elternmodus")
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Schließen") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("Schließen") { dismiss() } } }
         }
     }
 }
