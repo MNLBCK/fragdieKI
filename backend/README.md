@@ -31,8 +31,13 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app:app --host 0.0.0.0 --port 8787 --reload
+uvicorn app:app --host 127.0.0.1 --port 8787 --reload
 ```
+
+> **Hinweis Netzwerk-Exposition**: Der Standard-Host `127.0.0.1` beschränkt den Zugriff auf
+> das lokale Gerät. `--host 0.0.0.0` nur setzen, wenn der Zugriff über das lokale Netz
+> bewusst gewünscht ist – `/api/v1/parent/history` enthält dann sensitive Gesprächsdaten.
+> In dem Fall empfiehlt sich die `api.parent_history_api_key`-Option in `config.yaml`.
 
 ## Tests
 

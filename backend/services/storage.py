@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -11,29 +13,50 @@ from .schemas import TurnRecord
 @dataclass(slots=True)
 class StorageService:
     data_dir: Path
+    retention_days: int = 30
     history_file: Path = field(init=False)
+    _lock: threading.Lock = field(init=False, default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.history_file = self.data_dir / "turn_history.jsonl"
 
     def store_turn(self, record: TurnRecord) -> None:
-        with self.history_file.open("a", encoding="utf-8") as fp:
-            fp.write(record.model_dump_json() + "\n")
+        line = record.model_dump_json() + "\n"
+        with self._lock:
+            with self.history_file.open("a", encoding="utf-8") as fp:
+                fp.write(line)
 
     def parent_history(self) -> list[dict[str, Any]]:
         if not self.history_file.exists():
             return []
+        cutoff = datetime.now(UTC) - timedelta(days=self.retention_days)
         rows: list[dict[str, Any]] = []
-        for line in self.history_file.read_text(encoding="utf-8").splitlines():
-            item = json.loads(line)
+        with self._lock:
+            lines = self.history_file.read_text(encoding="utf-8").splitlines()
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            try:
+                ts = datetime.fromisoformat(item["timestamp"])
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=UTC)
+                if ts < cutoff:
+                    continue
+            except (KeyError, ValueError):
+                pass
             rows.append(
                 {
-                    "timestamp": item["timestamp"],
-                    "transcript": item["transcript"],
-                    "answer": item["answer"],
-                    "mode": item["mode"],
-                    "safety_state": item["safety_state"],
+                    "timestamp": item.get("timestamp", ""),
+                    "transcript": item.get("transcript", ""),
+                    "answer": item.get("answer", ""),
+                    "mode": item.get("mode", ""),
+                    "safety_state": item.get("safety_state", ""),
                 }
             )
         return rows

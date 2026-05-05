@@ -1,6 +1,11 @@
 server:
-  host: 0.0.0.0
+  host: 127.0.0.1
   port: 8787
+
+api:
+  # Set to a non-empty string to require this key via the X-API-Key header
+  # on the /api/v1/parent/history endpoint.
+  parent_history_api_key: ""
 
 storage:
   data_dir: ./data
@@ -13,6 +18,7 @@ stt:
   language: de
   vad: true
   max_audio_seconds: 20
+  max_upload_bytes: 20971520  # 20 MB
 
 tts:
   engine: piper

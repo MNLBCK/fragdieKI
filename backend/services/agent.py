@@ -12,7 +12,8 @@ class AgentService:
         mode_hint = self._load_mode_hint(mode)
         base = "Ich erkläre es dir ganz einfach"
         if mode_hint:
-            base = f"{base} im Modus {mode}"
+            # Incorporate the mode hint description into the response framing
+            base = f"{base} ({mode_hint})"
         return f"{base}: {user_text[:140]}."
 
     def _load_mode_hint(self, mode: str) -> str:

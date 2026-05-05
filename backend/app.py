@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from services.agent import AgentService
@@ -17,20 +19,41 @@ from services.stt import STTService
 from services.tts import TTSService
 
 BASE_DIR = Path(__file__).resolve().parent
-CONFIG = yaml.safe_load((BASE_DIR / "config.yaml").read_text(encoding="utf-8"))
+_config_path = Path(os.environ.get("APP_CONFIG_PATH", BASE_DIR / "config.yaml"))
+CONFIG = yaml.safe_load(_config_path.read_text(encoding="utf-8"))
+
 DATA_DIR = BASE_DIR / "data"
 AUDIO_DIR = DATA_DIR / "audio"
 UPLOAD_DIR = DATA_DIR / "uploads"
-AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Max upload size in bytes (default 20 MB); can be set in config as stt.max_upload_bytes
+MAX_UPLOAD_BYTES: int = int(CONFIG["stt"].get("max_upload_bytes", 20 * 1024 * 1024))
 
 stt_service = STTService(model=CONFIG["stt"]["model"], language=CONFIG["stt"]["language"])
 safety_service = SafetyService()
 agent_service = AgentService(prompt_dir=BASE_DIR / "prompts")
 tts_service = TTSService(audio_dir=AUDIO_DIR)
-storage_service = StorageService(data_dir=DATA_DIR)
+storage_service = StorageService(
+    data_dir=DATA_DIR,
+    retention_days=int(CONFIG["storage"].get("text_retention_days", 30)),
+)
 
-app = FastAPI(title="openClaw Maxi Voice API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):  # noqa: ARG001
+    AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    yield
+
+
+app = FastAPI(title="openClaw Maxi Voice API", version="0.1.0", lifespan=lifespan)
+
+
+def _require_api_key(x_api_key: str) -> None:
+    """Enforce API key for protected endpoints when configured."""
+    required_key: str = CONFIG.get("api", {}).get("parent_history_api_key", "")
+    if required_key and x_api_key != required_key:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 @app.get("/health")
@@ -51,38 +74,55 @@ async def create_turn(
         raise HTTPException(status_code=400, detail="Unsupported audio type")
 
     turn_id = str(uuid.uuid4())
-    upload_path = UPLOAD_DIR / f"{turn_id}_{audio.filename or 'input.m4a'}"
-    content = await audio.read()
-    upload_path.write_bytes(content)
+    # Use only the basename to prevent path traversal via a crafted filename
+    safe_filename = Path(audio.filename or "input.m4a").name
+    upload_path = UPLOAD_DIR / f"{turn_id}_{safe_filename}"
 
-    started = time.perf_counter()
-    transcript = stt_service.transcribe(upload_path)
-    input_class = safety_service.classify_input(transcript)
+    # Stream to disk in chunks, enforcing upload size limit
+    total_bytes = 0
+    try:
+        with upload_path.open("wb") as fp:
+            while True:
+                chunk = await audio.read(8192)
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                if total_bytes > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Audio file too large")
+                fp.write(chunk)
 
-    if input_class == "ok":
-        answer = agent_service.ask(user_text=transcript, session_id=session_id, mode=mode)
-    else:
-        answer = safety_service.safe_response(input_class)
+        started = time.perf_counter()
+        transcript = stt_service.transcribe(upload_path)
+        input_class = safety_service.classify_input(transcript)
 
-    answer = safety_service.check_output(answer)
-    tts_service.synthesize(turn_id=turn_id, text=answer)
-    duration_ms = int((time.perf_counter() - started) * 1000)
+        if input_class == "ok":
+            answer = agent_service.ask(user_text=transcript, session_id=session_id, mode=mode)
+        else:
+            answer = safety_service.safe_response(input_class)
 
-    storage_service.store_turn(
-        TurnRecord(
-            turn_id=turn_id,
-            timestamp=datetime.now(UTC),
-            session_id=session_id,
-            device_id=device_id,
-            mode=mode,
-            transcript=transcript,
-            answer=answer,
-            safety_state=input_class,
-            duration_ms=duration_ms,
+        answer = safety_service.check_output(answer)
+        audio_path = tts_service.synthesize(turn_id=turn_id, text=answer)
+        duration_ms = int((time.perf_counter() - started) * 1000)
+
+        storage_service.store_turn(
+            TurnRecord(
+                turn_id=turn_id,
+                timestamp=datetime.now(UTC),
+                session_id=session_id,
+                device_id=device_id,
+                mode=mode,
+                transcript=transcript,
+                answer=answer,
+                safety_state=input_class,
+                duration_ms=duration_ms,
+            )
         )
-    )
 
-    upload_path.unlink(missing_ok=True)
+        if CONFIG["storage"].get("delete_audio_after_turn", False):
+            audio_path.unlink(missing_ok=True)
+
+    finally:
+        upload_path.unlink(missing_ok=True)
 
     return TurnResponse(
         turn_id=turn_id,
@@ -102,5 +142,6 @@ async def get_audio(turn_id: str) -> FileResponse:
 
 
 @app.get("/api/v1/parent/history")
-async def parent_history() -> list[dict[str, str]]:
+async def parent_history(request: Request) -> list[dict[str, str]]:
+    _require_api_key(request.headers.get("x-api-key", ""))
     return storage_service.parent_history()
