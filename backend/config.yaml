@@ -1,0 +1,39 @@
+server:
+  host: 127.0.0.1
+  port: 8787
+
+api:
+  # Set to a non-empty string to require this key via the X-API-Key header
+  # on the /api/v1/parent/history endpoint.
+  parent_history_api_key: ""
+
+storage:
+  data_dir: ./data
+  text_retention_days: 30
+  delete_audio_after_turn: true
+
+stt:
+  engine: faster-whisper
+  model: small
+  language: de
+  vad: true
+  max_audio_seconds: 20
+  max_upload_bytes: 20971520  # 20 MB
+
+tts:
+  engine: piper
+  voice: de_DE-friendly
+  output_format: m4a
+  speaking_rate: 0.92
+
+modes:
+  explain:
+    description: Sachfragen kindgerecht erklären
+  story:
+    description: Kurze Geschichten erzählen
+  dino:
+    description: Dinosauriermodus
+  football:
+    description: Fußball und Bewegung
+  bedtime:
+    description: ruhige kurze Antworten
