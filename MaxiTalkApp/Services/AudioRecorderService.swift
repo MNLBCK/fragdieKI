@@ -35,7 +35,7 @@ final class AudioRecorderService: NSObject {
     }
 
     private func temporaryOutputURL() -> URL {
-        let fileName = "maxi-\(UUID().uuidString).m4a"
+        let fileName = "fragdieki-\(UUID().uuidString).m4a"
         return FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
     }
 }

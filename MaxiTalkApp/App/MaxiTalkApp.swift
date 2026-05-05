@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct MaxiTalkApp: App {
+struct FragDieKIApp: App {
     var body: some Scene {
         WindowGroup {
             MainView()

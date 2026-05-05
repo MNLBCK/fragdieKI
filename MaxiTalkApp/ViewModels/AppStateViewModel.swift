@@ -5,6 +5,7 @@ final class AppStateViewModel: ObservableObject {
     @Published private(set) var state: AppState = .idle
     @Published var currentMode: ConversationMode = .question
     @Published var settings: ParentalSettings
+    @Published private(set) var history: [TurnHistoryEntry]
 
     let sessionId: UUID
     let deviceId: UUID
@@ -13,10 +14,11 @@ final class AppStateViewModel: ObservableObject {
     private let backend = BackendClient()
     private let playback = AudioPlaybackService()
 
-    init(sessionId: UUID = UUID(), deviceId: UUID = UUID()) {
+    init(sessionId: UUID = UUID(), deviceId: UUID = SettingsStore.loadOrCreateDeviceID()) {
         self.sessionId = sessionId
         self.deviceId = deviceId
         self.settings = SettingsStore.load()
+        self.history = HistoryStore.load()
 
         playback.onPlaybackFinished = { [weak self] in
             Task { @MainActor in
@@ -58,6 +60,7 @@ final class AppStateViewModel: ObservableObject {
                     serverBaseURL: baseURL
                 )
                 let ttsURL = try await backend.downloadAudio(audioPath: response.audioURL, serverBaseURL: baseURL)
+                appendHistory(response)
                 state = .speaking
                 try playback.play(url: ttsURL)
             } catch {
@@ -76,10 +79,27 @@ final class AppStateViewModel: ObservableObject {
         SettingsStore.save(newSettings)
     }
 
+    func clearHistory() {
+        history = []
+        HistoryStore.clear()
+    }
+
     private func validatedServerURL() throws -> URL {
         guard let url = URL(string: settings.serverBaseURL) else {
             throw URLError(.badURL)
         }
         return url
+    }
+
+    private func appendHistory(_ response: TurnResponse) {
+        let entry = TurnHistoryEntry(
+            id: UUID(),
+            createdAt: Date(),
+            mode: currentMode,
+            transcript: response.transcript,
+            safetyState: response.safetyState
+        )
+        history.insert(entry, at: 0)
+        HistoryStore.save(history)
     }
 }

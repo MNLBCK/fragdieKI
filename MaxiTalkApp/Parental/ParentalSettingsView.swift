@@ -38,6 +38,25 @@ struct ParentalSettingsView: View {
             Toggle("Debug-Anzeige", isOn: $draft.debugEnabled)
 
             Button("Speichern") { viewModel.saveSettings(draft) }
+
+            Section("Verlauf") {
+                if viewModel.history.isEmpty {
+                    Text("Noch kein Verlauf vorhanden.")
+                } else {
+                    ForEach(viewModel.history.prefix(20)) { entry in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(entry.transcript.isEmpty ? "Ohne Transkript" : entry.transcript)
+                            Text("\(entry.mode.rawValue) • \(entry.safetyState)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Button("Verlauf löschen", role: .destructive) {
+                    viewModel.clearHistory()
+                }
+            }
         }
     }
 }

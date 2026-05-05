@@ -6,8 +6,12 @@ struct MainView: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            Text("🦒")
-                .font(.system(size: 72))
+            VStack(spacing: 8) {
+                Text("🧠✨")
+                    .font(.system(size: 56))
+                Text("Frag die KI")
+                    .font(.title2.bold())
+            }
 
             statusIcon
                 .font(.system(size: 48))
