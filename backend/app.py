@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -28,6 +29,7 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 
 # Max upload size in bytes (default 20 MB); can be set in config as stt.max_upload_bytes
 MAX_UPLOAD_BYTES: int = int(CONFIG["stt"].get("max_upload_bytes", 20 * 1024 * 1024))
+MAX_TURNS_PER_MINUTE: int = int(CONFIG.get("api", {}).get("max_turns_per_minute", 30))
 
 stt_service = STTService(model=CONFIG["stt"]["model"], language=CONFIG["stt"]["language"])
 safety_service = SafetyService()
@@ -49,9 +51,26 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
 app = FastAPI(title="openClaw Maxi Voice API", version="0.1.0", lifespan=lifespan)
 
 
-def _require_api_key(x_api_key: str) -> None:
+_rate_lock = threading.Lock()
+_rate_bucket: dict[str, list[float]] = {}
+
+
+def _enforce_turn_rate_limit(device_id: str) -> None:
+    if MAX_TURNS_PER_MINUTE <= 0:
+        return
+    now = time.time()
+    cutoff = now - 60
+    key = device_id or "unknown"
+    with _rate_lock:
+        entries = [ts for ts in _rate_bucket.get(key, []) if ts >= cutoff]
+        if len(entries) >= MAX_TURNS_PER_MINUTE:
+            raise HTTPException(status_code=429, detail="Too many requests")
+        entries.append(now)
+        _rate_bucket[key] = entries
+
+def _require_api_key(x_api_key: str, key_name: str) -> None:
     """Enforce API key for protected endpoints when configured."""
-    required_key: str = CONFIG.get("api", {}).get("parent_history_api_key", "")
+    required_key: str = CONFIG.get("api", {}).get(key_name, "")
     if required_key and x_api_key != required_key:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
@@ -63,6 +82,7 @@ async def health() -> dict[str, str]:
 
 @app.post("/api/v1/maxi/turn", response_model=TurnResponse)
 async def create_turn(
+    request: Request,
     audio: UploadFile = File(...),
     session_id: str = Form(...),
     device_id: str = Form(...),
@@ -70,6 +90,8 @@ async def create_turn(
     client_version: str = Form("unknown"),
 ) -> TurnResponse:
     _ = client_version
+    _require_api_key(request.headers.get("x-api-key", ""), "turn_api_key")
+    _enforce_turn_rate_limit(device_id)
     if audio.content_type not in {"audio/m4a", "audio/mp4", "audio/wav", "application/octet-stream"}:
         raise HTTPException(status_code=400, detail="Unsupported audio type")
 
@@ -107,7 +129,7 @@ async def create_turn(
         storage_service.store_turn(
             TurnRecord(
                 turn_id=turn_id,
-                timestamp=datetime.now(UTC),
+                timestamp=datetime.now(timezone.utc),
                 session_id=session_id,
                 device_id=device_id,
                 mode=mode,
@@ -143,5 +165,5 @@ async def get_audio(turn_id: str) -> FileResponse:
 
 @app.get("/api/v1/parent/history")
 async def parent_history(request: Request) -> list[dict[str, str]]:
-    _require_api_key(request.headers.get("x-api-key", ""))
+    _require_api_key(request.headers.get("x-api-key", ""), "parent_history_api_key")
     return storage_service.parent_history()

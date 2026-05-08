@@ -6,6 +6,10 @@ api:
   # Set to a non-empty string to require this key via the X-API-Key header
   # on the /api/v1/parent/history endpoint.
   parent_history_api_key: ""
+  # Optional API key protection for /api/v1/maxi/turn
+  turn_api_key: ""
+  # 0 disables rate limiting
+  max_turns_per_minute: 30
 
 storage:
   data_dir: ./data
