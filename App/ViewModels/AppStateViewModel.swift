@@ -1,10 +1,12 @@
 import Foundation
+import UIKit
 
 @MainActor
 final class AppStateViewModel: ObservableObject {
     @Published private(set) var state: AppState = .idle
     @Published private(set) var micLevel: Float = 0
     @Published var currentMode: ConversationMode = .question
+    @Published var isImagePickerPresented = false
     @Published var settings: ParentalSettings
     @Published private(set) var history: [TurnHistoryEntry]
 
@@ -14,6 +16,8 @@ final class AppStateViewModel: ObservableObject {
     private let recorder = AudioRecorderService()
     private let backend = BackendClient()
     private let playback = AudioPlaybackService()
+    private let readingPlayback = ReadingPlaybackService()
+    private let ocrService = OCRService()
 
     init(sessionId: UUID = UUID(), deviceId: UUID = SettingsStore.loadOrCreateDeviceID()) {
         self.sessionId = sessionId
@@ -22,6 +26,11 @@ final class AppStateViewModel: ObservableObject {
         self.history = HistoryStore.load()
 
         playback.onPlaybackFinished = { [weak self] in
+            Task { @MainActor in
+                self?.state = .idle
+            }
+        }
+        readingPlayback.onFinished = { [weak self] in
             Task { @MainActor in
                 self?.state = .idle
             }
@@ -87,6 +96,7 @@ final class AppStateViewModel: ObservableObject {
 
     func stopPlayback() {
         playback.stop()
+        readingPlayback.stop()
         micLevel = 0
         state = .idle
     }
@@ -103,6 +113,42 @@ final class AppStateViewModel: ObservableObject {
 
     var remainingDailySeconds: Int {
         max(0, settings.dailyLimitSeconds - usedTodaySeconds)
+    }
+
+    func startPhotoReading() {
+        guard settings.photoReadingEnabled else {
+            state = .error("Foto-Vorlesen ist deaktiviert")
+            return
+        }
+        guard case .idle = state else { return }
+        isImagePickerPresented = true
+    }
+
+    func processPickedImage(_ image: UIImage?) {
+        guard let image else { return }
+        state = .thinking
+
+        let ocrService = self.ocrService
+        let readingPlayback = self.readingPlayback
+        let debugEnabled = self.settings.debugEnabled
+
+        Task.detached { [weak self] in
+            do {
+                let text = try await ocrService.extractText(from: image)
+                await MainActor.run {
+                    self?.state = .speaking
+                    try? readingPlayback.speak(text)
+                }
+            } catch OCRError.noTextFound {
+                await MainActor.run {
+                    self?.state = .error("Ich konnte keinen lesbaren Text erkennen")
+                }
+            } catch {
+                await MainActor.run {
+                    self?.state = .error(debugEnabled ? error.localizedDescription : "Foto konnte nicht verarbeitet werden")
+                }
+            }
+        }
     }
 
     // MARK: - Private

@@ -6,4 +6,8 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(ConversationMode.question.rawValue, "question")
         XCTAssertTrue(ConversationMode.allCases.contains(.dino))
     }
+
+    func testParentalSettingsDefaultPhotoReadingEnabled() {
+        XCTAssertTrue(ParentalSettings.default.photoReadingEnabled)
+    }
 }

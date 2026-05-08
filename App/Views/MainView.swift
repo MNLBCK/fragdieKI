@@ -1,8 +1,10 @@
 import SwiftUI
+import UIKit
 
 struct MainView: View {
     @StateObject private var viewModel = AppStateViewModel()
     @State private var showParentalGate = false
+    @State private var pickedImage: UIImage?
 
     var body: some View {
         VStack(spacing: 24) {
@@ -49,6 +51,19 @@ struct MainView: View {
             Text("Halten und sprechen")
                 .font(.title3)
 
+
+            Button {
+                viewModel.startPhotoReading()
+            } label: {
+                Label("Foto vorlesen", systemImage: "text.viewfinder")
+                    .font(.headline)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .background(viewModel.settings.photoReadingEnabled ? Color.orange.opacity(0.2) : Color.gray.opacity(0.2))
+                    .clipShape(Capsule())
+            }
+            .disabled(!viewModel.settings.photoReadingEnabled || viewModel.state != .idle)
+
             Image(systemName: "gear")
                 .accessibilityLabel("Elternmodus")
                 .accessibilityHint("Gedrückt halten für Elternmodus")
@@ -61,6 +76,13 @@ struct MainView: View {
         .onAppear { viewModel.configure() }
         .sheet(isPresented: $showParentalGate) {
             ParentalGateView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.isImagePickerPresented) {
+            ImagePickerView(selectedImage: $pickedImage, isPresented: $viewModel.isImagePickerPresented)
+        }
+        .onChange(of: pickedImage) { image in
+            viewModel.processPickedImage(image)
+            pickedImage = nil
         }
     }
 
