@@ -190,13 +190,23 @@ final class AppStateViewModel: ObservableObject {
                 }
             } catch let urlError as URLError {
                 await MainActor.run {
-                    self?.state = .error(debugEnabled ? urlError.localizedDescription : "Keine Verbindung")
+                    self?.playOfflineFallbackSpeech(debugText: urlError.localizedDescription, debugEnabled: debugEnabled)
                 }
             } catch {
                 await MainActor.run {
-                    self?.state = .error(debugEnabled ? error.localizedDescription : "Fehler aufgetreten")
+                    self?.playOfflineFallbackSpeech(debugText: error.localizedDescription, debugEnabled: debugEnabled)
                 }
             }
+        }
+    }
+
+    private func playOfflineFallbackSpeech(debugText: String, debugEnabled: Bool) {
+        let fallbackText = "Ich habe gerade keine Verbindung. Bitte versuch es gleich noch einmal."
+        state = .speaking
+        do {
+            try readingPlayback.speak(fallbackText)
+        } catch {
+            state = .error(debugEnabled ? debugText : "Keine Verbindung")
         }
     }
 
