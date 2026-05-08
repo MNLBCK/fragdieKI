@@ -28,11 +28,12 @@ Dieses Backend implementiert die spezifizierte Voice-Pipeline als MVP-Referenz m
 
 ```bash
 cd backend
-python3 -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app:app --host 127.0.0.1 --port 8787 --reload
 ```
+
 
 > **Hinweis Netzwerk-Exposition**: Der Standard-Host `127.0.0.1` beschränkt den Zugriff auf
 > das lokale Gerät. `--host 0.0.0.0` nur setzen, wenn der Zugriff über das lokale Netz
@@ -51,3 +52,26 @@ pytest -q
 - `STTService.transcribe`: echte `faster-whisper`-Pipeline
 - `TTSService.synthesize`: echte Piper-CLI/Library
 - `AgentService.ask`: openClaw-Bridge statt Stub
+
+
+## Produktionsnahe Bridges (neu)
+
+In `config.yaml` können echte Integrationen zugeschaltet werden:
+
+- `stt.command`: CLI-Template für Transkription (`{input}`, `{output_dir}`, `{model}`, `{language}`)
+- `tts.command`: CLI-Template für Audio-Erzeugung (`{output}`, `{text}`)
+- `agent.endpoint`: HTTP-Endpoint für LLM/Agent-Antworten (+ optional `agent.api_key`)
+
+Wenn diese Felder leer sind, bleiben die sicheren Fallbacks aktiv.
+
+## Observability (neu)
+
+Pro Turn wird ein strukturierter Log-Eintrag mit Latenzen geschrieben:
+- `stt_ms`, `agent_ms`, `tts_ms`, `total_ms`
+
+## Load-Smoke-Test (neu)
+
+```bash
+cd backend
+python scripts/load_smoke.py --base http://127.0.0.1:8787 --requests 20 --concurrency 4
+```

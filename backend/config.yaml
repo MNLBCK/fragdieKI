@@ -23,12 +23,22 @@ stt:
   vad: true
   max_audio_seconds: 20
   max_upload_bytes: 20971520  # 20 MB
+  # Optional command template, e.g.: whisper "{input}" --model {model} --language {language} --output_format txt --output_dir "{output_dir}"
+  command: ""
 
 tts:
   engine: piper
   voice: de_DE-friendly
   output_format: m4a
   speaking_rate: 0.92
+  # Optional command template, must create file at {output}; {text} contains the answer
+  command: ""
+
+agent:
+  # Optional HTTP endpoint for real agent responses
+  endpoint: ""
+  api_key: ""
+  timeout_seconds: 20
 
 modes:
   explain:

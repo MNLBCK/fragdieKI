@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
@@ -22,6 +23,8 @@ from services.tts import TTSService
 BASE_DIR = Path(__file__).resolve().parent
 _config_path = Path(os.environ.get("APP_CONFIG_PATH", BASE_DIR / "config.yaml"))
 CONFIG = yaml.safe_load(_config_path.read_text(encoding="utf-8"))
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("fragdieki")
 
 DATA_DIR = BASE_DIR / "data"
 AUDIO_DIR = DATA_DIR / "audio"
@@ -31,10 +34,10 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 MAX_UPLOAD_BYTES: int = int(CONFIG["stt"].get("max_upload_bytes", 20 * 1024 * 1024))
 MAX_TURNS_PER_MINUTE: int = int(CONFIG.get("api", {}).get("max_turns_per_minute", 30))
 
-stt_service = STTService(model=CONFIG["stt"]["model"], language=CONFIG["stt"]["language"])
+stt_service = STTService(model=CONFIG["stt"]["model"], language=CONFIG["stt"]["language"], command=CONFIG["stt"].get("command", ""))
 safety_service = SafetyService()
-agent_service = AgentService(prompt_dir=BASE_DIR / "prompts")
-tts_service = TTSService(audio_dir=AUDIO_DIR)
+agent_service = AgentService(prompt_dir=BASE_DIR / "prompts", endpoint=CONFIG.get("agent", {}).get("endpoint", ""), api_key=CONFIG.get("agent", {}).get("api_key", ""), timeout_seconds=float(CONFIG.get("agent", {}).get("timeout_seconds", 20)))
+tts_service = TTSService(audio_dir=AUDIO_DIR, command=CONFIG["tts"].get("command", ""))
 storage_service = StorageService(
     data_dir=DATA_DIR,
     retention_days=int(CONFIG["storage"].get("text_retention_days", 30)),
@@ -114,17 +117,25 @@ async def create_turn(
                 fp.write(chunk)
 
         started = time.perf_counter()
+        stt_started = time.perf_counter()
         transcript = stt_service.transcribe(upload_path)
+        stt_ms = int((time.perf_counter() - stt_started) * 1000)
         input_class = safety_service.classify_input(transcript)
 
+        agent_ms = 0
         if input_class == "ok":
+            agent_started = time.perf_counter()
             answer = agent_service.ask(user_text=transcript, session_id=session_id, mode=mode)
+            agent_ms = int((time.perf_counter() - agent_started) * 1000)
         else:
             answer = safety_service.safe_response(input_class)
 
         answer = safety_service.check_output(answer)
+        tts_started = time.perf_counter()
         audio_path = tts_service.synthesize(turn_id=turn_id, text=answer)
+        tts_ms = int((time.perf_counter() - tts_started) * 1000)
         duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.info("turn_complete turn_id=%s session_id=%s mode=%s safety=%s stt_ms=%s agent_ms=%s tts_ms=%s total_ms=%s", turn_id, session_id, mode, input_class, stt_ms, agent_ms, tts_ms, duration_ms)
 
         storage_service.store_turn(
             TurnRecord(
