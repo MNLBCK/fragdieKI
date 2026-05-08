@@ -29,6 +29,23 @@ struct MainView: View {
                         .onEnded { _ in viewModel.releaseAndSend() }
                 )
 
+            if viewModel.state == .recording {
+                VStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        ForEach(0..<12, id: \.self) { index in
+                            Capsule()
+                                .fill(.red)
+                                .frame(width: 6, height: barHeight(for: index))
+                        }
+                    }
+                    .frame(height: 40)
+
+                    Text("Ich höre zu …")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.red)
+                }
+            }
+
             Text("Halten und sprechen")
                 .font(.title3)
 
@@ -45,6 +62,19 @@ struct MainView: View {
         .sheet(isPresented: $showParentalGate) {
             ParentalGateView(viewModel: viewModel)
         }
+    }
+
+
+
+    private func barHeight(for index: Int) -> CGFloat {
+        let minHeight: CGFloat = 8
+        let maxHeight: CGFloat = 40
+        let noiseFloor = 0.12
+        let level = max(0, CGFloat(viewModel.micLevel) - noiseFloor) / (1 - noiseFloor)
+        let phase = Double(index) * 0.55
+        let wave = (sin(Date().timeIntervalSinceReferenceDate * 8 + phase) + 1) / 2
+        let dynamic = CGFloat(wave) * level
+        return minHeight + (maxHeight - minHeight) * dynamic
     }
 
     private var statusIcon: Image {

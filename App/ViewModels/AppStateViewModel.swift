@@ -3,6 +3,7 @@ import Foundation
 @MainActor
 final class AppStateViewModel: ObservableObject {
     @Published private(set) var state: AppState = .idle
+    @Published private(set) var micLevel: Float = 0
     @Published var currentMode: ConversationMode = .question
     @Published var settings: ParentalSettings
     @Published private(set) var history: [TurnHistoryEntry]
@@ -33,6 +34,11 @@ final class AppStateViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self, case .recording = self.state else { return }
                 self.handleAudioReady(audioURL)
+            }
+        }
+        recorder.onLevelUpdate = { [weak self] level in
+            Task { @MainActor [weak self] in
+                self?.micLevel = level
             }
         }
     }
@@ -81,6 +87,7 @@ final class AppStateViewModel: ObservableObject {
 
     func stopPlayback() {
         playback.stop()
+        micLevel = 0
         state = .idle
     }
 
@@ -108,6 +115,7 @@ final class AppStateViewModel: ObservableObject {
             return
         }
 
+        micLevel = 0
         state = .uploading
 
         // Capture value-typed state needed off the MainActor.
