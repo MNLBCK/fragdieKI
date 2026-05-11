@@ -39,7 +39,9 @@ class OCRService:
 
     def ready(self) -> str:
         """Check if OCR service is ready."""
-        return "ready" if self._available else "unavailable"
+        status = "ready" if self._available else "unavailable"
+        logger.debug("OCR ready status: %s", status)
+        return status
 
     def extract_text(self, image_path: Path) -> str:
         """

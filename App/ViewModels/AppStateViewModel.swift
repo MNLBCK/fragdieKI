@@ -17,7 +17,6 @@ final class AppStateViewModel: ObservableObject {
     private let backend = BackendClient()
     private let playback = AudioPlaybackService()
     private let readingPlayback = ReadingPlaybackService()
-    private let minRecordingDurationSeconds = 0
     private let maxRecordingDurationSeconds = 20
     private var recordingStartedAt: Date?
 
@@ -264,7 +263,7 @@ final class AppStateViewModel: ObservableObject {
             return 0
         }
         let elapsed = Date().timeIntervalSince(startedAt)
-        let clampedDurationSeconds = min(maxRecordingDurationSeconds, max(minRecordingDurationSeconds, Int(elapsed.rounded())))
+        let clampedDurationSeconds = min(maxRecordingDurationSeconds, max(0, Int(elapsed.rounded())))
         recordingStartedAt = nil
         return clampedDurationSeconds
     }
