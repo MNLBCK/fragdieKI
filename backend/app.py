@@ -14,6 +14,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from services.agent import AgentService
+from services.ocr import OCRService
 from services.safety import SafetyService
 from services.schemas import TurnRecord, TurnResponse
 from services.storage import StorageService
@@ -29,15 +30,18 @@ logger = logging.getLogger("fragdieki")
 DATA_DIR = BASE_DIR / "data"
 AUDIO_DIR = DATA_DIR / "audio"
 UPLOAD_DIR = DATA_DIR / "uploads"
+IMAGE_DIR = DATA_DIR / "images"
 
 # Max upload size in bytes (default 20 MB); can be set in config as stt.max_upload_bytes
 MAX_UPLOAD_BYTES: int = int(CONFIG["stt"].get("max_upload_bytes", 20 * 1024 * 1024))
+MAX_IMAGE_BYTES: int = int(CONFIG.get("ocr", {}).get("max_image_bytes", 10 * 1024 * 1024))
 MAX_TURNS_PER_MINUTE: int = int(CONFIG.get("api", {}).get("max_turns_per_minute", 30))
 
 stt_service = STTService(model=CONFIG["stt"]["model"], language=CONFIG["stt"]["language"], command=CONFIG["stt"].get("command", ""))
 safety_service = SafetyService()
 agent_service = AgentService(prompt_dir=BASE_DIR / "prompts", endpoint=CONFIG.get("agent", {}).get("endpoint", ""), api_key=CONFIG.get("agent", {}).get("api_key", ""), timeout_seconds=float(CONFIG.get("agent", {}).get("timeout_seconds", 20)))
 tts_service = TTSService(audio_dir=AUDIO_DIR, command=CONFIG["tts"].get("command", ""))
+ocr_service = OCRService(language=CONFIG.get("ocr", {}).get("language", "deu"))
 storage_service = StorageService(
     data_dir=DATA_DIR,
     retention_days=int(CONFIG["storage"].get("text_retention_days", 30)),
@@ -48,6 +52,7 @@ storage_service = StorageService(
 async def lifespan(app: FastAPI):  # noqa: ARG001
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    IMAGE_DIR.mkdir(parents=True, exist_ok=True)
     yield
 
 
@@ -80,7 +85,7 @@ def _require_api_key(x_api_key: str, key_name: str) -> None:
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "stt": stt_service.ready(), "tts": tts_service.ready(), "agent": agent_service.ready()}
+    return {"status": "ok", "stt": stt_service.ready(), "tts": tts_service.ready(), "agent": agent_service.ready(), "ocr": ocr_service.ready()}
 
 
 @app.post("/api/v1/maxi/turn", response_model=TurnResponse)
@@ -172,6 +177,62 @@ async def get_audio(turn_id: str) -> FileResponse:
     if not path.exists():
         raise HTTPException(status_code=404, detail="Audio not found")
     return FileResponse(path, media_type="audio/mp4", filename=path.name)
+
+
+@app.post("/api/v1/ocr")
+async def extract_text_from_image(
+    request: Request,
+    image: UploadFile = File(...),
+    device_id: str = Form(...),
+) -> dict[str, str]:
+    """
+    Extract text from an uploaded image using local OCR (Tesseract).
+    No external API calls are made - all processing happens on the family backend.
+    """
+    _require_api_key(request.headers.get("x-api-key", ""), "turn_api_key")
+    _enforce_turn_rate_limit(device_id)
+
+    if image.content_type not in {"image/jpeg", "image/jpg", "image/png", "image/heic", "image/heif", "application/octet-stream"}:
+        raise HTTPException(status_code=400, detail="Unsupported image type")
+
+    ocr_id = str(uuid.uuid4())
+    safe_filename = Path(image.filename or "image.jpg").name
+    image_path = IMAGE_DIR / f"{ocr_id}_{safe_filename}"
+
+    # Stream to disk in chunks, enforcing image size limit
+    total_bytes = 0
+    try:
+        with image_path.open("wb") as fp:
+            while True:
+                chunk = await image.read(8192)
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                if total_bytes > MAX_IMAGE_BYTES:
+                    raise HTTPException(status_code=413, detail="Image file too large")
+                fp.write(chunk)
+
+        started = time.perf_counter()
+        text = ocr_service.extract_text(image_path)
+        duration_ms = int((time.perf_counter() - started) * 1000)
+
+        logger.info("ocr_complete ocr_id=%s device_id=%s chars=%d duration_ms=%d", ocr_id, device_id, len(text), duration_ms)
+
+        return {
+            "ocr_id": ocr_id,
+            "text": text,
+        }
+
+    except ValueError as e:
+        logger.warning("OCR failed for %s: %s", ocr_id, e)
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.error("OCR processing error for %s: %s", ocr_id, e)
+        raise HTTPException(status_code=500, detail="OCR processing failed") from e
+    finally:
+        # Clean up uploaded image immediately after processing
+        image_path.unlink(missing_ok=True)
+
 
 
 @app.get("/api/v1/parent/history")

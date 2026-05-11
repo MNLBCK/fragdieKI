@@ -17,7 +17,6 @@ final class AppStateViewModel: ObservableObject {
     private let backend = BackendClient()
     private let playback = AudioPlaybackService()
     private let readingPlayback = ReadingPlaybackService()
-    private let ocrService = OCRService()
 
     init(sessionId: UUID = UUID(), deviceId: UUID = SettingsStore.loadOrCreateDeviceID()) {
         self.sessionId = sessionId
@@ -126,22 +125,44 @@ final class AppStateViewModel: ObservableObject {
 
     func processPickedImage(_ image: UIImage?) {
         guard let image else { return }
-        state = .thinking
+        guard let baseURL = URL(string: settings.serverBaseURL) else {
+            state = .error("Server-URL ungültig")
+            return
+        }
 
-        let ocrService = self.ocrService
+        state = .uploading
+
+        let deviceId = self.deviceId
+        let backend = self.backend
         let readingPlayback = self.readingPlayback
         let debugEnabled = self.settings.debugEnabled
 
         Task.detached { [weak self] in
             do {
-                let text = try await ocrService.extractText(from: image)
+                // Save image to temporary file
+                let imageURL = try Self.saveImageToTempFile(image)
+                defer { try? FileManager.default.removeItem(at: imageURL) }
+
+                // Upload to backend for OCR
+                await MainActor.run { self?.state = .thinking }
+                let text = try await backend.extractTextFromImage(
+                    imageURL: imageURL,
+                    deviceId: deviceId,
+                    serverBaseURL: baseURL
+                )
+
+                // Speak the extracted text
                 await MainActor.run {
                     self?.state = .speaking
                     try? readingPlayback.speak(text)
                 }
-            } catch OCRError.noTextFound {
+            } catch BackendError.noTextFound {
                 await MainActor.run {
                     self?.state = .error("Ich konnte keinen lesbaren Text erkennen")
+                }
+            } catch let urlError as URLError {
+                await MainActor.run {
+                    self?.playOfflineFallbackSpeech(debugText: urlError.localizedDescription, debugEnabled: debugEnabled)
                 }
             } catch {
                 await MainActor.run {
@@ -149,6 +170,15 @@ final class AppStateViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    private static func saveImageToTempFile(_ image: UIImage) throws -> URL {
+        guard let jpegData = image.jpegData(compressionQuality: 0.8) else {
+            throw NSError(domain: "AppStateViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not convert image to JPEG"])
+        }
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("photo-\(UUID().uuidString).jpg")
+        try jpegData.write(to: tempURL)
+        return tempURL
     }
 
     // MARK: - Private

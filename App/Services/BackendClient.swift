@@ -57,6 +57,43 @@ final class BackendClient {
         return localURL
     }
 
+    func extractTextFromImage(
+        imageURL: URL,
+        deviceId: UUID,
+        serverBaseURL: URL
+    ) async throws -> String {
+        let endpoint = url(for: "/api/v1/ocr", relativeTo: serverBaseURL)
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        // Write multipart body to a temp file so URLSession can stream it from disk.
+        let bodyFileURL = try createImageBodyFile(
+            imageURL: imageURL,
+            boundary: boundary,
+            deviceId: deviceId
+        )
+        defer { try? FileManager.default.removeItem(at: bodyFileURL) }
+
+        let (data, response) = try await session.upload(for: request, fromFile: bodyFileURL)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BackendError.invalidResponse
+        }
+
+        if httpResponse.statusCode == 422 {
+            throw BackendError.noTextFound
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw BackendError.invalidResponse
+        }
+
+        let ocrResponse = try JSONDecoder().decode(OCRResponse.self, from: data)
+        return ocrResponse.text
+    }
+
     // MARK: - Helpers
 
     /// Constructs a URL by replacing the path component of `base` with `path`.
@@ -102,9 +139,48 @@ final class BackendClient {
         try body.write(to: fileURL)
         return fileURL
     }
+
+    private func createImageBodyFile(
+        imageURL: URL,
+        boundary: String,
+        deviceId: UUID
+    ) throws -> URL {
+        var body = Data()
+
+        func appendField(_ name: String, value: String) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+
+        appendField("device_id", value: deviceId.uuidString)
+
+        let imageData = try Data(contentsOf: imageURL)
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"image\"; filename=\"photo.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n".data(using: .utf8)!)
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+        let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("multipart-image-\(UUID().uuidString).bin")
+        try body.write(to: fileURL)
+        return fileURL
+    }
 }
 
 enum BackendError: Error {
     case invalidResponse
+    case noTextFound
+}
+
+struct OCRResponse: Codable {
+    let ocrId: String
+    let text: String
+
+    enum CodingKeys: String, CodingKey {
+        case ocrId = "ocr_id"
+        case text
+    }
 }
 
