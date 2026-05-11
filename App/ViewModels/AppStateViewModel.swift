@@ -260,10 +260,10 @@ final class AppStateViewModel: ObservableObject {
 
     private func measuredRecordingDurationSeconds() -> Int {
         guard let startedAt = recordingStartedAt else {
-            return maxRecordingDurationSeconds
+            return 0
         }
         let elapsed = Date().timeIntervalSince(startedAt)
-        let clampedDurationSeconds = min(maxRecordingDurationSeconds, max(minRecordingDurationSeconds, Int(elapsed.rounded(.up))))
+        let clampedDurationSeconds = min(maxRecordingDurationSeconds, max(minRecordingDurationSeconds, Int(elapsed.rounded())))
         recordingStartedAt = nil
         return clampedDurationSeconds
     }

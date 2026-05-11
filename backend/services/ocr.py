@@ -34,7 +34,7 @@ class OCRService:
             logger.info("Tesseract OCR available: version %s", version)
             return True
         except Exception as e:
-            logger.error("Tesseract not found or not responding: %s", e)
+            logger.warning("Tesseract not found or not responding: %s", e)
             return False
 
     def ready(self) -> str:
