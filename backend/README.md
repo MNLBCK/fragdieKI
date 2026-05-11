@@ -16,6 +16,7 @@ Dieses Backend implementiert die spezifizierte Voice-Pipeline als MVP-Referenz m
 - `POST /api/v1/maxi/turn`
 - `GET /api/v1/audio/{turn_id}.m4a`
 - `GET /api/v1/parent/history`
+- `POST /api/v1/ocr` — Foto-zu-Text (lokales Tesseract OCR, keine Cloud-Calls)
 - `GET /health`
 
 ## Datenschutz im IST-Stand
@@ -23,6 +24,7 @@ Dieses Backend implementiert die spezifizierte Voice-Pipeline als MVP-Referenz m
 - Upload-Audio wird nur temporär in `backend/data/uploads` abgelegt und nach dem Turn gelöscht.
 - Roh-Audio wird nicht dauerhaft im Verlauf gespeichert.
 - Verlauf speichert Zeitstempel, Transkript, Antwort, Modus, Safety-Status und Dauer.
+- **Foto-OCR**: Hochgeladene Fotos werden lokal mit Tesseract OCR verarbeitet (keine Cloud-Calls zu OpenAI/Google). Bilder werden sofort nach der Verarbeitung gelöscht.
 
 ## Start lokal (macOS / Apple Silicon)
 
@@ -31,6 +33,13 @@ cd backend
 python3.13 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+
+# Tesseract OCR installieren (für Foto-zu-Text Feature)
+# macOS:
+brew install tesseract tesseract-lang
+# Linux:
+# sudo apt-get install tesseract-ocr tesseract-ocr-deu
+
 uvicorn app:app --host 127.0.0.1 --port 8787 --reload
 ```
 
