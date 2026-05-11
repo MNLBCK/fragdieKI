@@ -228,6 +228,8 @@ async def extract_text_from_image(
         raise HTTPException(status_code=422, detail=str(e)) from e
     except RuntimeError as e:
         logger.error("OCR processing error for %s: %s", ocr_id, e)
+        if str(e) == "OCR service unavailable":
+            raise HTTPException(status_code=503, detail="OCR service unavailable") from e
         raise HTTPException(status_code=500, detail="OCR processing failed") from e
     finally:
         # Clean up uploaded image immediately after processing

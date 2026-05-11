@@ -17,6 +17,7 @@ final class AppStateViewModel: ObservableObject {
     private let backend = BackendClient()
     private let playback = AudioPlaybackService()
     private let readingPlayback = ReadingPlaybackService()
+    private var recordingStartedAt: Date?
 
     init(sessionId: UUID = UUID(), deviceId: UUID = SettingsStore.loadOrCreateDeviceID()) {
         self.sessionId = sessionId
@@ -70,6 +71,7 @@ final class AppStateViewModel: ObservableObject {
         Task {
             do {
                 try await recorder.startRecording()
+                recordingStartedAt = Date()
                 state = .recording
             } catch RecorderError.permissionDenied {
                 state = .error("Mikrofon-Zugriff verweigert")
@@ -193,6 +195,7 @@ final class AppStateViewModel: ObservableObject {
 
         micLevel = 0
         state = .uploading
+        let recordingDurationSeconds = measuredRecordingDurationSeconds()
 
         // Capture value-typed state needed off the MainActor.
         let sessionId = self.sessionId
@@ -214,7 +217,7 @@ final class AppStateViewModel: ObservableObject {
                 await MainActor.run { self?.state = .thinking }
                 let ttsURL = try await backend.downloadAudio(audioPath: response.audioURL, serverBaseURL: baseURL)
                 await MainActor.run {
-                    self?.appendHistory(response)
+                    self?.appendHistory(response, recordingDurationSeconds: recordingDurationSeconds)
                     self?.state = .speaking
                     try? playback.play(url: ttsURL)
                 }
@@ -240,18 +243,26 @@ final class AppStateViewModel: ObservableObject {
         }
     }
 
-    private func appendHistory(_ response: TurnResponse) {
-        let estimatedDurationSeconds = min(20, remainingDailySeconds == 0 ? 20 : remainingDailySeconds)
+    private func appendHistory(_ response: TurnResponse, recordingDurationSeconds: Int) {
         let entry = TurnHistoryEntry(
             id: UUID(),
             createdAt: Date(),
             mode: currentMode,
             transcript: response.transcript,
             safetyState: response.safetyState,
-            estimatedDurationSeconds: estimatedDurationSeconds
+            estimatedDurationSeconds: recordingDurationSeconds
         )
         history.insert(entry, at: 0)
         HistoryStore.save(history)
+    }
+
+    private func measuredRecordingDurationSeconds() -> Int {
+        guard let startedAt = recordingStartedAt else {
+            return min(20, max(1, remainingDailySeconds))
+        }
+        recordingStartedAt = nil
+        let elapsed = Date().timeIntervalSince(startedAt)
+        return min(20, max(1, Int(elapsed.rounded(.up))))
     }
 
     private var usedTodaySeconds: Int {
@@ -262,4 +273,3 @@ final class AppStateViewModel: ObservableObject {
             .reduce(0, +)
     }
 }
-

@@ -21,24 +21,21 @@ class OCRService:
             language: Tesseract language code (e.g., 'deu' for German, 'eng' for English)
         """
         self.language = language
-        self._check_tesseract()
+        self._available = self._check_tesseract()
 
-    def _check_tesseract(self) -> None:
+    def _check_tesseract(self) -> bool:
         """Check if Tesseract is available."""
         try:
             version = pytesseract.get_tesseract_version()
             logger.info("Tesseract OCR available: version %s", version)
+            return True
         except Exception as e:
             logger.error("Tesseract not found or not responding: %s", e)
-            raise RuntimeError("Tesseract OCR is not installed or not accessible") from e
+            return False
 
     def ready(self) -> str:
         """Check if OCR service is ready."""
-        try:
-            pytesseract.get_tesseract_version()
-            return "ready"
-        except Exception:
-            return "unavailable"
+        return "ready" if self._available else "unavailable"
 
     def extract_text(self, image_path: Path) -> str:
         """
@@ -56,6 +53,8 @@ class OCRService:
         """
         if not image_path.exists():
             raise ValueError(f"Image file not found: {image_path}")
+        if not self._available:
+            raise RuntimeError("OCR service unavailable")
 
         try:
             # Open and validate image
