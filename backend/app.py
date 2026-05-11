@@ -234,7 +234,6 @@ async def extract_text_from_image(
         image_path.unlink(missing_ok=True)
 
 
-
 @app.get("/api/v1/parent/history")
 async def parent_history(request: Request) -> list[dict[str, str]]:
     _require_api_key(request.headers.get("x-api-key", ""), "parent_history_api_key")

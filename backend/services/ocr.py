@@ -72,9 +72,8 @@ class OCRService:
                 config = f"--psm 3 -l {self.language}"
                 text = pytesseract.image_to_string(img, config=config)
 
-                # Clean up the extracted text
-                text = text.strip()
-                # Normalize whitespace
+                # Clean up the extracted text: strip and normalize whitespace
+                # split() without args splits on any whitespace and removes empty strings
                 text = " ".join(text.split())
 
                 if not text:
