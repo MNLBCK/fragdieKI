@@ -1,9 +1,12 @@
 import Foundation
+import UIKit
 
 @MainActor
 final class AppStateViewModel: ObservableObject {
     @Published private(set) var state: AppState = .idle
+    @Published private(set) var micLevel: Float = 0
     @Published var currentMode: ConversationMode = .question
+    @Published var isImagePickerPresented = false
     @Published var settings: ParentalSettings
     @Published private(set) var history: [TurnHistoryEntry]
 
@@ -13,6 +16,7 @@ final class AppStateViewModel: ObservableObject {
     private let recorder = AudioRecorderService()
     private let backend = BackendClient()
     private let playback = AudioPlaybackService()
+    private let readingPlayback = ReadingPlaybackService()
 
     init(sessionId: UUID = UUID(), deviceId: UUID = SettingsStore.loadOrCreateDeviceID()) {
         self.sessionId = sessionId
@@ -25,6 +29,11 @@ final class AppStateViewModel: ObservableObject {
                 self?.state = .idle
             }
         }
+        readingPlayback.onFinished = { [weak self] in
+            Task { @MainActor in
+                self?.state = .idle
+            }
+        }
     }
 
     // Wire up after init so `self` is available.
@@ -33,6 +42,11 @@ final class AppStateViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self, case .recording = self.state else { return }
                 self.handleAudioReady(audioURL)
+            }
+        }
+        recorder.onLevelUpdate = { [weak self] level in
+            Task { @MainActor [weak self] in
+                self?.micLevel = level
             }
         }
     }
@@ -81,6 +95,8 @@ final class AppStateViewModel: ObservableObject {
 
     func stopPlayback() {
         playback.stop()
+        readingPlayback.stop()
+        micLevel = 0
         state = .idle
     }
 
@@ -98,6 +114,73 @@ final class AppStateViewModel: ObservableObject {
         max(0, settings.dailyLimitSeconds - usedTodaySeconds)
     }
 
+    func startPhotoReading() {
+        guard settings.photoReadingEnabled else {
+            state = .error("Foto-Vorlesen ist deaktiviert")
+            return
+        }
+        guard case .idle = state else { return }
+        isImagePickerPresented = true
+    }
+
+    func processPickedImage(_ image: UIImage?) {
+        guard let image else { return }
+        guard let baseURL = URL(string: settings.serverBaseURL) else {
+            state = .error("Server-URL ungültig")
+            return
+        }
+
+        state = .uploading
+
+        let deviceId = self.deviceId
+        let backend = self.backend
+        let readingPlayback = self.readingPlayback
+        let debugEnabled = self.settings.debugEnabled
+
+        Task.detached { [weak self] in
+            do {
+                // Save image to temporary file
+                let imageURL = try Self.saveImageToTempFile(image)
+                defer { try? FileManager.default.removeItem(at: imageURL) }
+
+                // Upload to backend for OCR
+                await MainActor.run { self?.state = .thinking }
+                let text = try await backend.extractTextFromImage(
+                    imageURL: imageURL,
+                    deviceId: deviceId,
+                    serverBaseURL: baseURL
+                )
+
+                // Speak the extracted text
+                await MainActor.run {
+                    self?.state = .speaking
+                    try? readingPlayback.speak(text)
+                }
+            } catch BackendError.noTextFound {
+                await MainActor.run {
+                    self?.state = .error("Ich konnte keinen lesbaren Text erkennen")
+                }
+            } catch let urlError as URLError {
+                await MainActor.run {
+                    self?.playOfflineFallbackSpeech(debugText: urlError.localizedDescription, debugEnabled: debugEnabled)
+                }
+            } catch {
+                await MainActor.run {
+                    self?.state = .error(debugEnabled ? error.localizedDescription : "Foto konnte nicht verarbeitet werden")
+                }
+            }
+        }
+    }
+
+    private static func saveImageToTempFile(_ image: UIImage) throws -> URL {
+        guard let jpegData = image.jpegData(compressionQuality: 0.8) else {
+            throw NSError(domain: "AppStateViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not convert image to JPEG"])
+        }
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("photo-\(UUID().uuidString).jpg")
+        try jpegData.write(to: tempURL)
+        return tempURL
+    }
+
     // MARK: - Private
 
     /// Shared upload + playback flow triggered either by an explicit button release or
@@ -108,6 +191,7 @@ final class AppStateViewModel: ObservableObject {
             return
         }
 
+        micLevel = 0
         state = .uploading
 
         // Capture value-typed state needed off the MainActor.
@@ -136,13 +220,23 @@ final class AppStateViewModel: ObservableObject {
                 }
             } catch let urlError as URLError {
                 await MainActor.run {
-                    self?.state = .error(debugEnabled ? urlError.localizedDescription : "Keine Verbindung")
+                    self?.playOfflineFallbackSpeech(debugText: urlError.localizedDescription, debugEnabled: debugEnabled)
                 }
             } catch {
                 await MainActor.run {
-                    self?.state = .error(debugEnabled ? error.localizedDescription : "Fehler aufgetreten")
+                    self?.playOfflineFallbackSpeech(debugText: error.localizedDescription, debugEnabled: debugEnabled)
                 }
             }
+        }
+    }
+
+    private func playOfflineFallbackSpeech(debugText: String, debugEnabled: Bool) {
+        let fallbackText = "Ich habe gerade keine Verbindung. Bitte versuch es gleich noch einmal."
+        state = .speaking
+        do {
+            try readingPlayback.speak(fallbackText)
+        } catch {
+            state = .error(debugEnabled ? debugText : "Keine Verbindung")
         }
     }
 

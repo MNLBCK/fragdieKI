@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import struct
+import subprocess
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,14 +27,21 @@ def _silent_wav() -> bytes:
     )
 
 
-@dataclass(slots=True)
+@dataclass
 class TTSService:
     audio_dir: Path
+    command: str = ""
 
     def synthesize(self, turn_id: str, text: str) -> Path:
         target = self.audio_dir / f"{turn_id}.m4a"
-        # Stub: writes a silent WAV binary with .m4a extension until real TTS is wired in.
-        _ = text
+        if self.command:
+            argv_template = shlex.split(self.command)
+            argv = [token.format(output=str(target), text=text) for token in argv_template]
+            subprocess.run(argv, check=True, capture_output=True, text=True)
+            if target.exists() and target.stat().st_size > 0:
+                return target
+
+        # Fallback stub
         target.write_bytes(_silent_wav())
         return target
 

@@ -62,3 +62,16 @@ def test_get_audio_after_turn(client: TestClient) -> None:
 def test_audio_not_found(client: TestClient) -> None:
     response = client.get("/api/v1/audio/nonexistent-turn-id.m4a")
     assert response.status_code == 404
+
+
+def test_ocr_endpoint_with_invalid_image(client: TestClient) -> None:
+    """Test OCR endpoint with invalid image data."""
+    dummy_data = io.BytesIO(b"not an image")
+    response = client.post(
+        "/api/v1/ocr",
+        data={"device_id": "test-device"},
+        files={"image": ("test.jpg", dummy_data, "image/jpeg")},
+    )
+    # Should fail with 422 (no text found) or 500 (processing error)
+    assert response.status_code in {422, 500}
+

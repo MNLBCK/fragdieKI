@@ -4,8 +4,11 @@ import Foundation
 final class AudioRecorderService: NSObject, AVAudioRecorderDelegate {
     /// Called when recording ends due to the max-duration limit (not an explicit `stopRecording` call).
     var onRecordingFinishedBySystem: ((URL) -> Void)?
+    /// Live normalized level 0...1 while recording.
+    var onLevelUpdate: ((Float) -> Void)?
 
     private var recorder: AVAudioRecorder?
+    private var meterTimer: Timer?
     private let maxDuration: TimeInterval = 20
 
     func startRecording() async throws {
@@ -35,9 +38,11 @@ final class AudioRecorderService: NSObject, AVAudioRecorderDelegate {
 
         let newRecorder = try AVAudioRecorder(url: outputURL, settings: settings)
         newRecorder.delegate = self
+        newRecorder.isMeteringEnabled = true
         newRecorder.prepareToRecord()
         newRecorder.record(forDuration: maxDuration)
         recorder = newRecorder
+        startMetering()
     }
 
     func stopRecording() throws -> URL {
@@ -47,6 +52,7 @@ final class AudioRecorderService: NSObject, AVAudioRecorderDelegate {
         // Clear delegate so `audioRecorderDidFinishRecording` is not triggered for this explicit stop.
         recorder.delegate = nil
         recorder.stop()
+        stopMetering()
         let outputURL = recorder.url
         self.recorder = nil
         return outputURL
@@ -56,11 +62,33 @@ final class AudioRecorderService: NSObject, AVAudioRecorderDelegate {
 
     func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         // Triggered automatically when `maxDuration` is reached.
+        stopMetering()
         let outputURL = recorder.url
         self.recorder = nil
         if flag {
             onRecordingFinishedBySystem?(outputURL)
         }
+    }
+
+
+    private func startMetering() {
+        stopMetering()
+        let timer = Timer(timeInterval: 0.08, repeats: true) { [weak self] _ in
+            guard let self, let recorder = self.recorder else { return }
+            recorder.updateMeters()
+            let averagePower = recorder.averagePower(forChannel: 0)
+            // averagePower is typically in -160...0 dB. Normalize and floor for stable UI.
+            let normalized = max(0.0, min(1.0, (averagePower + 60.0) / 60.0))
+            self.onLevelUpdate?(normalized)
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        meterTimer = timer
+    }
+
+    private func stopMetering() {
+        meterTimer?.invalidate()
+        meterTimer = nil
+        onLevelUpdate?(0)
     }
 
     private func temporaryOutputURL() -> URL {
@@ -73,4 +101,3 @@ enum RecorderError: Error {
     case noActiveRecording
     case permissionDenied
 }
-

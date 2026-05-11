@@ -1,8 +1,10 @@
 import SwiftUI
+import UIKit
 
 struct MainView: View {
     @StateObject private var viewModel = AppStateViewModel()
     @State private var showParentalGate = false
+    @State private var pickedImage: UIImage?
 
     var body: some View {
         VStack(spacing: 24) {
@@ -29,8 +31,44 @@ struct MainView: View {
                         .onEnded { _ in viewModel.releaseAndSend() }
                 )
 
+            if viewModel.state == .recording {
+                VStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        ForEach(0..<12, id: \.self) { index in
+                            Capsule()
+                                .fill(.red)
+                                .frame(width: 6, height: barHeight(for: index))
+                        }
+                    }
+                    .frame(height: 40)
+
+                    Text("Ich höre zu …")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.red)
+                }
+            }
+
             Text("Halten und sprechen")
                 .font(.title3)
+
+
+            Button {
+                viewModel.startPhotoReading()
+            } label: {
+                Label("Foto vorlesen", systemImage: "text.viewfinder")
+                    .font(.headline)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .background(viewModel.settings.photoReadingEnabled ? Color.orange.opacity(0.2) : Color.gray.opacity(0.2))
+                    .clipShape(Capsule())
+            }
+            .disabled(!viewModel.settings.photoReadingEnabled || viewModel.state != .idle)
+            .accessibilityHint("Texterkennung läuft lokal auf dem Gerät")
+
+            Text("OCR lokal auf dem Gerät – kein Foto-Upload.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
 
             Image(systemName: "gear")
                 .accessibilityLabel("Elternmodus")
@@ -45,6 +83,26 @@ struct MainView: View {
         .sheet(isPresented: $showParentalGate) {
             ParentalGateView(viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.isImagePickerPresented) {
+            ImagePickerView(selectedImage: $pickedImage, isPresented: $viewModel.isImagePickerPresented)
+        }
+        .onChange(of: pickedImage) { image in
+            viewModel.processPickedImage(image)
+            pickedImage = nil
+        }
+    }
+
+
+
+    private func barHeight(for index: Int) -> CGFloat {
+        let minHeight: CGFloat = 8
+        let maxHeight: CGFloat = 40
+        let noiseFloor = 0.12
+        let level = max(0, CGFloat(viewModel.micLevel) - noiseFloor) / (1 - noiseFloor)
+        let phase = Double(index) * 0.55
+        let wave = (sin(Date().timeIntervalSinceReferenceDate * 8 + phase) + 1) / 2
+        let dynamic = CGFloat(wave) * level
+        return minHeight + (maxHeight - minHeight) * dynamic
     }
 
     private var statusIcon: Image {

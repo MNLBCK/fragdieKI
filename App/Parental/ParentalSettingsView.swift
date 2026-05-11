@@ -40,6 +40,11 @@ struct ParentalSettingsView: View {
 
             Toggle("Debug-Anzeige", isOn: $draft.debugEnabled)
 
+
+            Section("Funktionen") {
+                Toggle("Foto vorlesen erlauben", isOn: $draft.photoReadingEnabled)
+            }
+
             Button("Speichern") { viewModel.saveSettings(draft) }
 
             Section("Verlauf") {
