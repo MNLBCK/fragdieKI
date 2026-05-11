@@ -263,9 +263,9 @@ final class AppStateViewModel: ObservableObject {
             return maxRecordingDurationSeconds
         }
         let elapsed = Date().timeIntervalSince(startedAt)
-        let measured = min(maxRecordingDurationSeconds, max(minRecordingDurationSeconds, Int(elapsed.rounded(.up))))
+        let clampedDurationSeconds = min(maxRecordingDurationSeconds, max(minRecordingDurationSeconds, Int(elapsed.rounded(.up))))
         recordingStartedAt = nil
-        return measured
+        return clampedDurationSeconds
     }
 
     private var usedTodaySeconds: Int {
