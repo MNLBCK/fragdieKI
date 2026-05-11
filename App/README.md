@@ -9,6 +9,7 @@ Diese Struktur bildet eine einfache Push-to-Talk-App in SwiftUI für iOS 15 ab.
 - **Audioaufnahme** via `AVAudioRecorder` (M4A, 16 kHz, mono, max. 20 s) mit Mikrofon-Permission-Handling.
 - **Backend-Anbindung** an `POST /api/v1/maxi/turn` mit multipart/form-data; der Request-Body wird als Datei-Upload gestreamt (kein komplettes In-Memory-Buffering).
 - **Audioausgabe** via `AVAudioPlayer` auf Backend-TTS-Datei.
+- **Foto-Vorlesen (OCR) ausschließlich lokal** über Apple Vision; Bilder werden dafür nicht an das Backend hochgeladen.
 - **Elternmodus** mit PIN-Gate und Einstellungen.
 - **Sicherer PIN-Speicher** via iOS Keychain; alle anderen Einstellungen in `UserDefaults`.
 - **Persistente Device-ID** via `UserDefaults`.

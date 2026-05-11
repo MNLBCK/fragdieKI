@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import struct
 import subprocess
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,8 +35,9 @@ class TTSService:
     def synthesize(self, turn_id: str, text: str) -> Path:
         target = self.audio_dir / f"{turn_id}.m4a"
         if self.command:
-            cmd = self.command.format(output=str(target), text=text.replace('"', '\"'))
-            subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
+            argv_template = shlex.split(self.command)
+            argv = [token.format(output=str(target), text=text) for token in argv_template]
+            subprocess.run(argv, check=True, capture_output=True, text=True)
             if target.exists() and target.stat().st_size > 0:
                 return target
 

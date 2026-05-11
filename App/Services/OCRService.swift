@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import Vision
+import ImageIO
 
 final class OCRService {
     func extractText(from image: UIImage) async throws -> String {
@@ -37,7 +38,8 @@ final class OCRService {
             request.recognitionLanguages = ["de-DE"]
             request.usesLanguageCorrection = true
 
-            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            let orientation = CGImagePropertyOrientation(image.imageOrientation)
+            let handler = VNImageRequestHandler(cgImage: cgImage, orientation: orientation, options: [:])
             do {
                 try handler.perform([request])
             } catch {
@@ -50,4 +52,21 @@ final class OCRService {
 enum OCRError: Error {
     case invalidImage
     case noTextFound
+}
+
+private extension CGImagePropertyOrientation {
+    init(_ orientation: UIImage.Orientation) {
+        switch orientation {
+        case .up: self = .up
+        case .down: self = .down
+        case .left: self = .left
+        case .right: self = .right
+        case .upMirrored: self = .upMirrored
+        case .downMirrored: self = .downMirrored
+        case .leftMirrored: self = .leftMirrored
+        case .rightMirrored: self = .rightMirrored
+        @unknown default:
+            self = .up
+        }
+    }
 }

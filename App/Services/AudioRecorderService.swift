@@ -73,7 +73,7 @@ final class AudioRecorderService: NSObject, AVAudioRecorderDelegate {
 
     private func startMetering() {
         stopMetering()
-        meterTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 0.08, repeats: true) { [weak self] _ in
             guard let self, let recorder = self.recorder else { return }
             recorder.updateMeters()
             let averagePower = recorder.averagePower(forChannel: 0)
@@ -81,6 +81,8 @@ final class AudioRecorderService: NSObject, AVAudioRecorderDelegate {
             let normalized = max(0.0, min(1.0, (averagePower + 60.0) / 60.0))
             self.onLevelUpdate?(normalized)
         }
+        RunLoop.main.add(timer, forMode: .common)
+        meterTimer = timer
     }
 
     private func stopMetering() {
@@ -99,4 +101,3 @@ enum RecorderError: Error {
     case noActiveRecording
     case permissionDenied
 }
-

@@ -63,6 +63,12 @@ struct MainView: View {
                     .clipShape(Capsule())
             }
             .disabled(!viewModel.settings.photoReadingEnabled || viewModel.state != .idle)
+            .accessibilityHint("Texterkennung läuft lokal auf dem Gerät")
+
+            Text("OCR lokal auf dem Gerät – kein Foto-Upload.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
 
             Image(systemName: "gear")
                 .accessibilityLabel("Elternmodus")

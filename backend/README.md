@@ -62,6 +62,9 @@ In `config.yaml` können echte Integrationen zugeschaltet werden:
 - `tts.command`: CLI-Template für Audio-Erzeugung (`{output}`, `{text}`)
 - `agent.endpoint`: HTTP-Endpoint für LLM/Agent-Antworten (+ optional `agent.api_key`)
 
+Hinweis: `stt.command` und `tts.command` werden als Argumentliste ohne Shell ausgeführt
+(`shell=False`). Shell-Operatoren wie Pipes/Redirects werden dabei absichtlich nicht unterstützt.
+
 Wenn diese Felder leer sind, bleiben die sicheren Fallbacks aktiv.
 
 ## Observability (neu)
