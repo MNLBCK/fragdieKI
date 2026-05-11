@@ -17,6 +17,8 @@ Diese Struktur bildet eine einfache Push-to-Talk-App in SwiftUI für iOS 15 ab.
 - **Tageslimit-Prüfung** beim Start der Aufnahme (basierend auf lokalem Verlauf und geschätzter Turn-Dauer).
 - **Modus-Prüfung**: deaktivierte Modi werden vor Aufnahme blockiert.
 - **Differenzierte Fehlermeldungen**: Netzwerk-/URLErrors werden von anderen Fehlern unterschieden; im Debug-Modus werden `localizedDescription`-Details angezeigt.
+- **Offline-Fallback-Sprache**: Bei Netzwerk-/Backend-Fehlern wird eine lokale Retry-Ansage per `AVSpeechSynthesizer` abgespielt.
+- **Exakte Turn-Dauer lokal**: Die tatsächliche Aufnahmedauer pro Turn wird im Verlauf gespeichert (statt pauschaler Schätzung).
 - **iOS 15+ kompatibel**: keine iOS-16-only APIs (`NavigationStack`, `URL.appending(path:)` etc.).
 
 ## App-Zustände
@@ -25,6 +27,4 @@ Diese Struktur bildet eine einfache Push-to-Talk-App in SwiftUI für iOS 15 ab.
 
 ## Offene Punkte (für produktiven Betrieb)
 
-- Offline-Fallback-Audiodatei ist noch nicht eingebunden.
-- Die Dauer pro Turn wird aktuell als Schätzwert gespeichert (bis zu 20s), nicht als exakte Messung.
 - Kein fertiges Xcode-Projekt (`.xcodeproj`) enthalten; der Code ist als modulare Basisstruktur angelegt.

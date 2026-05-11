@@ -19,6 +19,7 @@ def test_health(client: TestClient) -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
+    assert data["ocr"] in {"ready", "unavailable"}
 
 
 def test_parent_history_returns_list(client: TestClient) -> None:
@@ -72,6 +73,5 @@ def test_ocr_endpoint_with_invalid_image(client: TestClient) -> None:
         data={"device_id": "test-device"},
         files={"image": ("test.jpg", dummy_data, "image/jpeg")},
     )
-    # Should fail with 422 (no text found) or 500 (processing error)
-    assert response.status_code in {422, 500}
-
+    # 503 if OCR binary is unavailable in runtime environment, otherwise 422/500 for bad image data.
+    assert response.status_code in {422, 500, 503}
