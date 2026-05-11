@@ -10,6 +10,10 @@ from PIL import Image, UnidentifiedImageError
 logger = logging.getLogger("fragdieki.ocr")
 
 
+class OCRServiceUnavailableError(RuntimeError):
+    """Raised when OCR cannot run because Tesseract is unavailable."""
+
+
 class OCRService:
     """Local OCR service using Tesseract."""
 
@@ -54,7 +58,7 @@ class OCRService:
         if not image_path.exists():
             raise ValueError(f"Image file not found: {image_path}")
         if not self._available:
-            raise RuntimeError("OCR service unavailable")
+            raise OCRServiceUnavailableError("OCR service unavailable")
 
         try:
             # Open and validate image

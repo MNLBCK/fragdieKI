@@ -17,6 +17,8 @@ final class AppStateViewModel: ObservableObject {
     private let backend = BackendClient()
     private let playback = AudioPlaybackService()
     private let readingPlayback = ReadingPlaybackService()
+    private let minRecordingDurationSeconds = 1
+    private let maxRecordingDurationSeconds = 20
     private var recordingStartedAt: Date?
 
     init(sessionId: UUID = UUID(), deviceId: UUID = SettingsStore.loadOrCreateDeviceID()) {
@@ -258,11 +260,12 @@ final class AppStateViewModel: ObservableObject {
 
     private func measuredRecordingDurationSeconds() -> Int {
         guard let startedAt = recordingStartedAt else {
-            return min(20, max(1, remainingDailySeconds))
+            return maxRecordingDurationSeconds
         }
-        recordingStartedAt = nil
         let elapsed = Date().timeIntervalSince(startedAt)
-        return min(20, max(1, Int(elapsed.rounded(.up))))
+        let measured = min(maxRecordingDurationSeconds, max(minRecordingDurationSeconds, Int(elapsed.rounded(.up))))
+        recordingStartedAt = nil
+        return measured
     }
 
     private var usedTodaySeconds: Int {

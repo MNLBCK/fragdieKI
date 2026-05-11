@@ -73,5 +73,5 @@ def test_ocr_endpoint_with_invalid_image(client: TestClient) -> None:
         data={"device_id": "test-device"},
         files={"image": ("test.jpg", dummy_data, "image/jpeg")},
     )
-    # 503 if OCR binary is unavailable in runtime env, otherwise 422/500 for bad image data.
+    # 503 if OCR binary is unavailable in runtime environment, otherwise 422/500 for bad image data.
     assert response.status_code in {422, 500, 503}
