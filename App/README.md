@@ -25,6 +25,20 @@ Diese Struktur bildet eine einfache Push-to-Talk-App in SwiftUI für iOS 15 ab.
 
 `AppState`: idle, recording, uploading, thinking, speaking, error(String)
 
-## Offene Punkte (für produktiven Betrieb)
+## Lokales Bauen
 
-- Kein fertiges Xcode-Projekt (`.xcodeproj`) enthalten; der Code ist als modulare Basisstruktur angelegt.
+Siehe [`Docs/LOCAL_BUILD.md`](Docs/LOCAL_BUILD.md) für vollständige Anleitung.
+
+Schnellstart (Simulator):
+```bash
+open App/FragDieKI.xcodeproj
+# oder per Kommandozeile:
+xcodebuild build -project App/FragDieKI.xcodeproj -scheme FragDieKI \
+  -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+  CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+```
+
+## CI
+
+GitHub Actions Workflow: `.github/workflows/ios-ci.yml`  
+Läuft bei jedem Push/PR auf `main` → Debug-Build + Unit-Tests.

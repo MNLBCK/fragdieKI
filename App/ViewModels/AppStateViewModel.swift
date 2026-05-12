@@ -175,7 +175,7 @@ final class AppStateViewModel: ObservableObject {
         }
     }
 
-    private static func saveImageToTempFile(_ image: UIImage) throws -> URL {
+    private nonisolated static func saveImageToTempFile(_ image: UIImage) throws -> URL {
         guard let jpegData = image.jpegData(compressionQuality: 0.8) else {
             throw NSError(domain: "AppStateViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not convert image to JPEG"])
         }
