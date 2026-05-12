@@ -34,3 +34,5 @@ build/
 *.ipa
 *.dSYM.zip
 *.dSYM
+.DS_Store
+.python-version
