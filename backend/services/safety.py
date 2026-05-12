@@ -13,7 +13,7 @@ SAFE_RESPONSES = {
 }
 
 
-@dataclass(slots=True)
+@dataclass
 class SafetyService:
     def classify_input(self, text: str) -> str:
         lower = text.lower()
