@@ -1,0 +1,50 @@
+name: iOS CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'App/**'
+      - '.github/workflows/ios-ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'App/**'
+      - '.github/workflows/ios-ci.yml'
+
+jobs:
+  build-and-test:
+    name: Build & Test (iOS)
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -switch /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Build (Debug)
+        run: |
+          xcodebuild build \
+            -project App/FragDieKI.xcodeproj \
+            -scheme FragDieKI \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Run Unit Tests
+        run: |
+          xcodebuild test \
+            -project App/FragDieKI.xcodeproj \
+            -scheme FragDieKI \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
