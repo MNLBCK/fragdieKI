@@ -18,7 +18,7 @@ from services.ocr import OCRService, OCRServiceUnavailableError
 from services.safety import SafetyService
 from services.schemas import TurnRecord, TurnResponse
 from services.storage import StorageService
-from services.stt import STTService
+from services.stt import STTService, STTServiceError
 from services.tts import TTSService
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -37,10 +37,22 @@ MAX_UPLOAD_BYTES: int = int(CONFIG["stt"].get("max_upload_bytes", 20 * 1024 * 10
 MAX_IMAGE_BYTES: int = int(CONFIG.get("ocr", {}).get("max_image_bytes", 10 * 1024 * 1024))
 MAX_TURNS_PER_MINUTE: int = int(CONFIG.get("api", {}).get("max_turns_per_minute", 30))
 
-stt_service = STTService(model=CONFIG["stt"]["model"], language=CONFIG["stt"]["language"], command=CONFIG["stt"].get("command", ""))
+stt_service = STTService(
+    engine=CONFIG["stt"].get("engine", "faster-whisper"),
+    model=CONFIG["stt"]["model"],
+    language=CONFIG["stt"]["language"],
+    vad=bool(CONFIG["stt"].get("vad", True)),
+    command=CONFIG["stt"].get("command", ""),
+)
 safety_service = SafetyService()
 agent_service = AgentService(prompt_dir=BASE_DIR / "prompts", endpoint=CONFIG.get("agent", {}).get("endpoint", ""), api_key=CONFIG.get("agent", {}).get("api_key", ""), timeout_seconds=float(CONFIG.get("agent", {}).get("timeout_seconds", 20)))
-tts_service = TTSService(audio_dir=AUDIO_DIR, command=CONFIG["tts"].get("command", ""))
+tts_service = TTSService(
+    audio_dir=AUDIO_DIR,
+    command=CONFIG["tts"].get("command", ""),
+    voice=CONFIG["tts"].get("voice", ""),
+    output_format=CONFIG["tts"].get("output_format", "m4a"),
+    speaking_rate=float(CONFIG["tts"].get("speaking_rate", 1.0)),
+)
 ocr_service = OCRService(language=CONFIG.get("ocr", {}).get("language", "deu"))
 storage_service = StorageService(
     data_dir=DATA_DIR,
@@ -57,6 +69,9 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
 
 
 app = FastAPI(title="openClaw Maxi Voice API", version="0.1.0", lifespan=lifespan)
+
+STT_FAILURE_ANSWER = "Ich konnte deine Sprachnachricht gerade nicht verstehen. Bitte versuch es noch einmal."
+AGENT_FAILURE_ANSWER = "Ich habe gerade keine Verbindung zum Antwortdienst. Bitte versuch es gleich noch einmal."
 
 
 _rate_lock = threading.Lock()
@@ -122,17 +137,29 @@ async def create_turn(
                 fp.write(chunk)
 
         started = time.perf_counter()
-        stt_started = time.perf_counter()
-        transcript = stt_service.transcribe(upload_path)
-        stt_ms = int((time.perf_counter() - stt_started) * 1000)
-        input_class = safety_service.classify_input(transcript)
-
+        transcript = ""
+        answer = ""
+        input_class = "unclear"
         agent_ms = 0
-        if input_class == "ok":
+        stt_started = time.perf_counter()
+        try:
+            transcript = stt_service.transcribe(upload_path)
+            stt_ms = int((time.perf_counter() - stt_started) * 1000)
+            input_class = safety_service.classify_input(transcript)
+        except STTServiceError as exc:
+            stt_ms = int((time.perf_counter() - stt_started) * 1000)
+            answer = STT_FAILURE_ANSWER
+            logger.warning("turn_stt_fallback turn_id=%s session_id=%s error=%s stt_ms=%s", turn_id, session_id, exc, stt_ms)
+
+        if not answer and input_class == "ok":
             agent_started = time.perf_counter()
-            answer = agent_service.ask(user_text=transcript, session_id=session_id, mode=mode)
+            try:
+                answer = agent_service.ask(user_text=transcript, session_id=session_id, mode=mode)
+            except Exception as exc:  # pragma: no cover - defensive fallback
+                logger.warning("turn_agent_fallback turn_id=%s session_id=%s error=%s", turn_id, session_id, exc)
+                answer = AGENT_FAILURE_ANSWER
             agent_ms = int((time.perf_counter() - agent_started) * 1000)
-        else:
+        elif not answer:
             answer = safety_service.safe_response(input_class)
 
         answer = safety_service.check_output(answer)

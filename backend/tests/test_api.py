@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import io
+import logging
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import app
+import app as backend_app
+from app import AGENT_FAILURE_ANSWER, STT_FAILURE_ANSWER, app
+from services.stt import STTServiceError
 
 
 @pytest.fixture(scope="module")
@@ -19,6 +22,9 @@ def test_health(client: TestClient) -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
+    assert data["stt"] in {"configured", "fallback"}
+    assert data["tts"] in {"configured", "fallback"}
+    assert data["agent"] in {"configured", "fallback"}
     assert data["ocr"] in {"ready", "unavailable"}
 
 
@@ -75,3 +81,45 @@ def test_ocr_endpoint_with_invalid_image(client: TestClient) -> None:
     )
     # 503 if OCR binary is unavailable in runtime environment, otherwise 422/500 for bad image data.
     assert response.status_code in {422, 500, 503}
+
+
+def test_create_turn_returns_safe_answer_when_stt_bridge_fails(client: TestClient, monkeypatch, caplog) -> None:
+    dummy_audio = io.BytesIO(b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00@\x1f\x00\x00\x80>\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00")
+
+    def fail_transcribe(_path):
+        raise STTServiceError("no model")
+
+    monkeypatch.setattr(backend_app.stt_service, "transcribe", fail_transcribe)
+
+    with caplog.at_level(logging.INFO, logger="fragdieki"):
+        response = client.post(
+            "/api/v1/maxi/turn",
+            data={"session_id": "test-session", "device_id": "test-device", "mode": "explain"},
+            files={"audio": ("test.wav", dummy_audio, "audio/wav")},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["transcript"] == ""
+    assert data["answer_text"] == STT_FAILURE_ANSWER
+    assert any("stt_ms=" in record.message and "total_ms=" in record.message for record in caplog.records)
+
+
+def test_create_turn_returns_safe_answer_when_agent_bridge_raises(client: TestClient, monkeypatch) -> None:
+    dummy_audio = io.BytesIO(b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00@\x1f\x00\x00\x80>\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00")
+
+    monkeypatch.setattr(backend_app.stt_service, "transcribe", lambda _path: "Warum ist der Himmel blau?")
+
+    def fail_agent(*args, **kwargs):
+        raise RuntimeError("bridge down")
+
+    monkeypatch.setattr(backend_app.agent_service, "ask", fail_agent)
+
+    response = client.post(
+        "/api/v1/maxi/turn",
+        data={"session_id": "test-session", "device_id": "test-device", "mode": "explain"},
+        files={"audio": ("test.wav", dummy_audio, "audio/wav")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer_text"] == AGENT_FAILURE_ANSWER
