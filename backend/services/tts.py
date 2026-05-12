@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-import struct
 import shlex
+import struct
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path

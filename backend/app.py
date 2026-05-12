@@ -155,7 +155,7 @@ async def create_turn(
             agent_started = time.perf_counter()
             try:
                 answer = agent_service.ask(user_text=transcript, session_id=session_id, mode=mode)
-            except Exception as exc:  # pragma: no cover - defensive fallback
+            except RuntimeError as exc:  # pragma: no cover - defensive fallback
                 logger.warning("turn_agent_fallback turn_id=%s session_id=%s error=%s", turn_id, session_id, exc)
                 answer = AGENT_FAILURE_ANSWER
             agent_ms = int((time.perf_counter() - agent_started) * 1000)

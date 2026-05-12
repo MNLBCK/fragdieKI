@@ -46,32 +46,35 @@ class AgentService:
             base = f"{base} ({mode_hint})"
         return f"{base}: {user_text[:140]}."
 
-    def _extract_text(self, payload: Any) -> str:
+    def _extract_text(self, payload: Any, depth: int = 0) -> str:
+        if depth > 6:
+            return ""
         if isinstance(payload, str):
             return payload.strip()
         if isinstance(payload, dict):
-            for key in ("answer", "text", "message", "content"):
+            for key in ("answer", "text", "content"):
                 value = payload.get(key)
                 if isinstance(value, str) and value.strip():
                     return value.strip()
-            for key in ("response", "output"):
+            for key in ("message", "response", "output", "delta"):
                 value = payload.get(key)
-                text = self._extract_text(value)
+                text = self._extract_text(value, depth + 1)
                 if text:
                     return text
             choices = payload.get("choices")
             if isinstance(choices, list):
                 for item in choices:
-                    text = self._extract_text(item)
+                    text = self._extract_text(item, depth + 1)
                     if text:
                         return text
-            for value in payload.values():
-                text = self._extract_text(value)
+            for key in ("result", "data"):
+                value = payload.get(key)
+                text = self._extract_text(value, depth + 1)
                 if text:
                     return text
         if isinstance(payload, list):
             for item in payload:
-                text = self._extract_text(item)
+                text = self._extract_text(item, depth + 1)
                 if text:
                     return text
         return ""
