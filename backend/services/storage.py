@@ -3,14 +3,14 @@ from __future__ import annotations
 import json
 import threading
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from .schemas import TurnRecord
 
 
-@dataclass(slots=True)
+@dataclass
 class StorageService:
     data_dir: Path
     retention_days: int = 30
@@ -30,7 +30,7 @@ class StorageService:
     def parent_history(self) -> list[dict[str, Any]]:
         if not self.history_file.exists():
             return []
-        cutoff = datetime.now(UTC) - timedelta(days=self.retention_days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=self.retention_days)
         rows: list[dict[str, Any]] = []
         with self._lock:
             lines = self.history_file.read_text(encoding="utf-8").splitlines()
@@ -45,7 +45,7 @@ class StorageService:
             try:
                 ts = datetime.fromisoformat(item["timestamp"])
                 if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=UTC)
+                    ts = ts.replace(tzinfo=timezone.utc)
                 if ts < cutoff:
                     continue
             except (KeyError, ValueError):
