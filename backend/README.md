@@ -5,10 +5,10 @@ Dieses Backend implementiert die spezifizierte Voice-Pipeline als MVP-Referenz m
 ## Architektur (aktuell)
 
 - **API**: FastAPI (`backend/app.py`)
-- **STT-Service**: `STTService` (Platzhalter für `faster-whisper`)
+- **STT-Service**: CLI-Bridge für echte Transkription mit sicherem Fallback
 - **Safety-Service**: regelbasierte Klassifikation + sichere Antworten
-- **Agent-Service**: Prompt-basierter Stub mit Mode-Hinweisen
-- **TTS-Service**: Platzhalterausgabe als `.m4a`-Artefakt
+- **Agent-Service**: HTTP-Bridge zum LLM/openClaw-Agent mit sicherem Fallback
+- **TTS-Service**: CLI-Bridge für echte Audio-Ausgabe mit sicherem Fallback
 - **Storage-Service**: JSONL-Verlauf für Eltern-History
 
 ## Implementierte Endpunkte
@@ -56,25 +56,21 @@ cd backend
 pytest -q
 ```
 
-## Nächste Integrationen
-
-- `STTService.transcribe`: echte `faster-whisper`-Pipeline
-- `TTSService.synthesize`: echte Piper-CLI/Library
-- `AgentService.ask`: openClaw-Bridge statt Stub
-
-
 ## Produktionsnahe Bridges (neu)
 
 In `config.yaml` können echte Integrationen zugeschaltet werden:
 
 - `stt.command`: CLI-Template für Transkription (`{input}`, `{output_dir}`, `{model}`, `{language}`)
-- `tts.command`: CLI-Template für Audio-Erzeugung (`{output}`, `{text}`)
+- `tts.command`: CLI-Template für Audio-Erzeugung (`{output}`, `{text}`, `{voice}`, `{speaking_rate}`)
 - `agent.endpoint`: HTTP-Endpoint für LLM/Agent-Antworten (+ optional `agent.api_key`)
 
 Hinweis: `stt.command` und `tts.command` werden als Argumentliste ohne Shell ausgeführt
 (`shell=False`). Shell-Operatoren wie Pipes/Redirects werden dabei absichtlich nicht unterstützt.
 
 Wenn diese Felder leer sind, bleiben die sicheren Fallbacks aktiv.
+
+Wenn eine konfigurierte Bridge fehlschlägt, liefert das Backend weiterhin eine sichere,
+verständliche Antwort und loggt den Fehler zusammen mit den Turn-Latenzen.
 
 ## Observability (neu)
 
